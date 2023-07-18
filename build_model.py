@@ -1,19 +1,24 @@
+import os
+
 import torch
 from torch import nn, optim
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
 import time
 import copy
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 from torchvision.models import ResNet18_Weights
 
-def create_model(train_dir, val_dir, num_epochs=25, patience=5):
+
+def create_model(train_dir, val_dir, model_dir, num_epochs=25, patience=10):
     data_transforms = {
         'train': transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomRotation(20),
+            transforms.RandomRotation(360),
+            transforms.RandomResizedCrop(224, scale=(0.85, 1.0), ratio=(1.0, 1.0)),
             transforms.RandomCrop(224, padding=4),
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
             transforms.ToTensor(),
@@ -42,7 +47,9 @@ def create_model(train_dir, val_dir, num_epochs=25, patience=5):
     # Load the model
     model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
     num_features = model.fc.in_features
-    model.fc = nn.Linear(num_features, 3)
+
+    num_classes = len(os.listdir(train_dir))
+    model.fc = nn.Linear(num_features, num_classes)
     model = model.to(device)
 
     # Define the criterion
@@ -67,8 +74,8 @@ def create_model(train_dir, val_dir, num_epochs=25, patience=5):
             print("Early stopping!")
             break
 
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
+        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
@@ -79,6 +86,10 @@ def create_model(train_dir, val_dir, num_epochs=25, patience=5):
 
             running_loss = 0.0
             running_corrects = 0
+
+            # Metrics
+            preds_list = []
+            labels_list = []
 
             # Iterate over data.
             for inputs, labels in dataloaders[phase]:
@@ -104,11 +115,20 @@ def create_model(train_dir, val_dir, num_epochs=25, patience=5):
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
 
+                # Append predictions for metrics
+                preds_list += preds.tolist()
+                labels_list += labels.tolist()
+
             if phase == 'train':
                 scheduler.step()
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+            # Metrics calculations
+            precision = precision_score(labels_list, preds_list, average='macro', zero_division=1)
+            recall = recall_score(labels_list, preds_list, average='macro', zero_division=1)
+            f1 = f1_score(labels_list, preds_list, average='macro')
 
             print('{} Loss: {:.4f} Acc: {:.4f}'.format(
                 phase, epoch_loss, epoch_acc))
@@ -118,16 +138,28 @@ def create_model(train_dir, val_dir, num_epochs=25, patience=5):
                 if epoch_acc > best_acc:
                     best_acc = epoch_acc
                     best_model_wts = copy.deepcopy(model.state_dict())
-                    n_epochs_no_improve = 0  # reset the no improvement counter
+                    n_epochs_no_improve = 0
+                    # Save the model
+                    model_save_path = os.path.join(model_dir, f"coinId_model_epoch_{epoch}.pth")
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'loss': loss,
+                        'accuracy': best_acc,
+                        'precision': precision,
+                        'recall': recall,
+                        'f1_score': f1,
+                    }, model_save_path)
                 else:
-                    n_epochs_no_improve += 1  # increment the no improvement counter
-
-                if n_epochs_no_improve >= patience:
-                    early_stop = True  # trigger early stopping
-
-                # Save the model after each epoch
-                torch.save(model.state_dict(),
-                           f'C:\\Users\\wjgri\\PycharmProjects\\coinID\\models\\coin_model_{epoch}.pth')
+                    n_epochs_no_improve += 1
+                    if n_epochs_no_improve >= patience:
+                        early_stop = True
+                        break
+                print(
+                    "Validation Accuracy: {:.4f} | Validation Precision: {:.4f} | Validation Recall: {:.4f} | "
+                    "Validation F1 Score: {:.4f}".format(
+                        epoch_acc, precision, recall, f1))
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
