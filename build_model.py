@@ -11,7 +11,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from torchvision.models import ResNet18_Weights
 
 
-def create_model(train_dir, val_dir, model_dir, num_epochs=25, patience=10):
+def create_model(train_dir, val_dir, model_dir, num_epochs=25, patience=5):
     data_transforms = {
         'train': transforms.Compose([
             transforms.Resize((224, 224)),
@@ -139,23 +139,25 @@ def create_model(train_dir, val_dir, model_dir, num_epochs=25, patience=10):
                     best_acc = epoch_acc
                     best_model_wts = copy.deepcopy(model.state_dict())
                     n_epochs_no_improve = 0
-                    # Save the model
-                    model_save_path = os.path.join(model_dir, f"coinId_model_epoch_{epoch}.pth")
-                    torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'loss': loss,
-                        'accuracy': best_acc,
-                        'precision': precision,
-                        'recall': recall,
-                        'f1_score': f1,
-                    }, model_save_path)
                 else:
                     n_epochs_no_improve += 1
                     if n_epochs_no_improve >= patience:
                         early_stop = True
                         break
+
+                # Save the model after every epoch
+                model_save_path = os.path.join(model_dir, f"coinId_model_epoch_{epoch}.pth")
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss,
+                    'accuracy': epoch_acc,
+                    'precision': precision,
+                    'recall': recall,
+                    'f1_score': f1,
+                }, model_save_path)
+
                 print(
                     "Validation Accuracy: {:.4f} | Validation Precision: {:.4f} | Validation Recall: {:.4f} | "
                     "Validation F1 Score: {:.4f}".format(

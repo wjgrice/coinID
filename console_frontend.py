@@ -8,31 +8,22 @@ import torch
 import build_model
 import run_model
 import split_data
+import download_files
 
 
 def run(main_dir, train_dir, val_dir, sample_dir, model_dir):
     while True:
         print("\nPlease select an option:")
         print("1. Run Existing Model on Sample Data")
-        print("2. Create training and validation folders")
-        print("3. Train a new model")
-        print("4. Display Model Metrics")
-        print("5. Exit")
-        choice = input("\nEnter your choice (1/2/3/4/5): ")
+        print("2. Display Model Metrics")
+        print("3. Train a new model... (Download Required)")
+        print("4. Exit")
+        choice = input("\nEnter your choice (1/2/3/4): ")
 
         if choice == '1':
             print("\nID Coins...")
             run_model.id_coins(sample_dir, model_dir, train_dir)
         elif choice == '2':
-            print("\nCreating training and validation folders...")
-            split_data.split_data_into_train_val(main_dir, train_dir, val_dir, val_ratio=0.2)
-        elif choice == '3':
-            print("\nTraining a new model...")
-            if os.path.exists(model_dir):
-                shutil.rmtree(model_dir)
-            os.makedirs(model_dir)
-            build_model.create_model(train_dir, val_dir, model_dir)
-        elif choice == '4':
             while True:
                 print("\nPlease select a visualization option:")
                 print("1. Bar Chart of Model Metrics")
@@ -75,8 +66,22 @@ def run(main_dir, train_dir, val_dir, sample_dir, model_dir):
                     break
                 else:
                     print("\nInvalid choice. Please enter a number between 1 and 4.")
-        elif choice == '5':
+        elif choice == '3':
+            print("\nTraining a new model...")
+            # Call download function if the main directory doesn't exist
+            print("Downloading and decompressing data...")
+            download_files.download_and_decompress_from_drive(main_dir)
+            # Check if training directory exists, if not, split data into train and validation
+            print("Preparing training and validation folders...")
+            split_data.split_data_into_train_val(main_dir, train_dir, val_dir, val_ratio=0.2)
+            # Check if model directory exists, if yes, delete it and create a new one
+            shutil.rmtree(model_dir)
+            os.makedirs(model_dir)
+            # Create model
+            print("Creating models")
+            build_model.create_model(train_dir, val_dir, model_dir)
+        elif choice == '4':
             print("\nExiting...")
             break
         else:
-            print("\nInvalid choice. Please enter a number between 1 and 5.")
+            print("\nInvalid choice. Please enter a number between 1 and 4.")
